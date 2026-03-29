@@ -1,0 +1,196 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Anonycryptous
+
+//@version=6
+indicator("QuantFlow: Precision Fibonacci VWAP", shorttitle="QuantFlow Precision | Anonycryptous", overlay=true)
+
+// --- Constants ---
+var string GRP_ANCHOR = "Anchor Settings"
+var string GRP_BANDS  = "Fibonacci Multipliers"
+var string GRP_STYLE  = "Visual Styles"
+
+
+// Fluorescent Color Palette
+color BULL_COLOR  = #00ffbb // Green
+color BEAR_COLOR  = #ff1100 // Red
+color RANGE_COLOR = #787b86 // Grey
+
+
+// --- Inputs ---
+anchorMethod = input.string("Auto", "Anchor Method", options=["Auto", "Timeframe", "Date"], group=GRP_ANCHOR, tooltip="Auto: Adapts to your chart timeframe.\nTimeframe: Uses a fixed reset interval.\nDate: Starts from a specific point.")
+anchorTf     = input.timeframe("D", "Manual Timeframe", group=GRP_ANCHOR, tooltip="Used when Anchor Method is 'Timeframe'.")
+anchorDate   = input.time(timestamp("2024-01-01 00:00:00"), "Manual Date", group=GRP_ANCHOR, tooltip="Used when Anchor Method is 'Date'.")
+
+stdDevMult   = input.float(1.2, "Global Sensitivity", minval=0.1, step=0.1, group=GRP_BANDS, tooltip="Multiplies all Fibonacci levels. Increase for volatile markets, decrease for scalping.")
+fib1         = input.float(0.236, "Fib Level 1", minval=0.0, group=GRP_BANDS)
+fib2         = input.float(0.382, "Fib Level 2", minval=0.0, group=GRP_BANDS)
+fib3         = input.float(0.500, "Fib Level 3", minval=0.0, group=GRP_BANDS)
+fib4         = input.float(0.618, "Fib Level 4", minval=0.0, group=GRP_BANDS)
+fib5         = input.float(1.000, "Fib Level 5", minval=0.0, group=GRP_BANDS)
+fib6         = input.float(1.618, "Fib Level 6", minval=0.0, group=GRP_BANDS)
+
+showCandles  = input.bool(true, "Highlight Market State (Candles)", group=GRP_STYLE)
+rangeZone    = input.string("Fib 1", "Ranging Zone Definition", options=["Fib 1", "Fib 2"], group=GRP_STYLE, tooltip="Defines which inner band counts as 'ranging'.")
+showLabels   = input.bool(true, "Show Band Labels", group=GRP_STYLE)
+tableSize    = input.string("small", "Table Size", options=["tiny", "small", "normal"], group=GRP_STYLE)
+tablePos     = input.string("Bottom Right", "Table Position", options=["Top Right", "Bottom Right", "Top Left", "Bottom Left"], group=GRP_STYLE)
+tableTransp  = input.int(15, "Table Transparency", minval=0, maxval=100, group=GRP_STYLE)
+
+// --- Logic ---
+// Auto Anchor Logic
+string autoTf = timeframe.isintraday ? (timeframe.multiplier <= 15 ? "D" : "W") : (timeframe.isdaily ? "M" : "12M")
+
+// Detect Reset
+bool isReset = switch anchorMethod
+    "Auto"      => timeframe.change(autoTf)
+    "Timeframe" => timeframe.change(anchorTf)
+    "Date"      => time >= anchorDate and time[1] < anchorDate
+    => false
+
+// Cumulative Variables for MIDAS VWAP
+var float sumVol      = 0.0
+var float sumVolPrice = 0.0
+var float sumVolSq    = 0.0
+
+if isReset
+    sumVol      := volume
+    sumVolPrice := volume * hlc3
+    sumVolSq    := volume * math.pow(hlc3, 2)
+else
+    sumVol      += volume
+    sumVolPrice += volume * hlc3
+    sumVolSq    += volume * math.pow(hlc3, 2)
+
+// Core Calculations
+float midasVwap = sumVolPrice / sumVol
+float variance  = (sumVolSq / sumVol) - math.pow(midasVwap, 2)
+float stdDev    = math.sqrt(math.max(0, variance))
+
+// --- Bell Curve Probability Analysis ---
+float zScore      = stdDev != 0 ? (close - midasVwap) / stdDev : 0
+float distPct     = (close - midasVwap) / midasVwap * 100
+// Empirical Probability of Reversion (Approximation)
+float absZ        = math.abs(zScore)
+float reversionPr = absZ < 1 ? 68.2 : absZ < 2 ? 95.4 : absZ < 3 ? 99.7 : 99.9
+
+
+// Band Levels
+float baseDev = stdDev * stdDevMult
+float upper1 = midasVwap + (baseDev * fib1), lower1 = midasVwap - (baseDev * fib1)
+float upper2 = midasVwap + (baseDev * fib2), lower2 = midasVwap - (baseDev * fib2)
+float upper3 = midasVwap + (baseDev * fib3), lower3 = midasVwap - (baseDev * fib3)
+float upper4 = midasVwap + (baseDev * fib4), lower4 = midasVwap - (baseDev * fib4)
+float upper5 = midasVwap + (baseDev * fib5), lower5 = midasVwap - (baseDev * fib5)
+float upper6 = midasVwap + (baseDev * fib6), lower6 = midasVwap - (baseDev * fib6)
+
+// --- Visuals ---
+// MIDAS Line (VWAP)
+plot(midasVwap, "MIDAS Line", color.new(chart.fg_color, 40), 2)
+
+// Fibonacci Bands (Thin Lines)
+// Upper
+plot(upper1, "U1", color.new(BULL_COLOR, 85), 1)
+plot(upper2, "U2", color.new(BULL_COLOR, 80), 1)
+plot(upper3, "U3", color.new(BULL_COLOR, 75), 1)
+p_u4 = plot(upper4, "U4", color.new(BULL_COLOR, 70), 1)
+plot(upper5, "U5", color.new(BULL_COLOR, 60), 1)
+p_u6 = plot(upper6, "U6", color.new(BULL_COLOR, 40), 1)
+
+// Lower
+plot(lower1, "L1", color.new(BEAR_COLOR, 85), 1)
+plot(lower2, "L2", color.new(BEAR_COLOR, 80), 1)
+plotshape(isReset, "Anchor Down", shape.labeldown, location.abovebar, BEAR_COLOR, size=size.small, text="▼", textcolor=chart.bg_color)
+
+// --- VWAP Crossover Alerts (Stars) ---
+bool crossAboveVwap = ta.crossover(close, midasVwap)
+bool crossBelowVwap = ta.crossunder(close, midasVwap)
+
+plotchar(crossAboveVwap, "Bullish VWAP Cross", "★", location.belowbar, BULL_COLOR, size=size.tiny)
+plotchar(crossBelowVwap, "Bearish VWAP Cross", "★", location.abovebar, BEAR_COLOR, size=size.tiny)
+
+// --- Extreme Band Alerts (Sparkles) ---
+bool breakUpper6 = ta.crossover(close, upper6)
+bool breakLower6 = ta.crossunder(close, lower6)
+
+plotchar(breakUpper6, "Extreme Upper Breakout", "✦", location.abovebar, BULL_COLOR, size=size.tiny)
+plotchar(breakLower6, "Extreme Lower Breakout", "✦", location.belowbar, BEAR_COLOR, size=size.tiny)
+
+p_l4 = plot(lower4, "L4", color.new(BEAR_COLOR, 70), 1)
+plot(lower5, "L5", color.new(BEAR_COLOR, 60), 1)
+p_l6 = plot(lower6, "L6", color.new(BEAR_COLOR, 40), 1)
+
+// Gradient Fills (Outer Zones)
+fill(p_u4, p_u6, upper6, upper4, color.new(BULL_COLOR, 95), color.new(BULL_COLOR, 60), title="Upper Bull Zone")
+fill(p_l4, p_l6, lower4, lower6, color.new(BEAR_COLOR, 95), color.new(BEAR_COLOR, 60), title="Lower Bear Zone")
+
+// Anchor Point Markers
+plotshape(isReset, "Anchor Up", shape.labelup, location.belowbar, BULL_COLOR, size=size.tiny, text="▲", textcolor=chart.bg_color)
+plotshape(isReset, "Anchor Down", shape.labeldown, location.abovebar, BEAR_COLOR, size=size.tiny, text="▼", textcolor=chart.bg_color)
+
+// Candle Coloring Logic
+float rangeUpper = rangeZone == "Fib 1" ? upper1 : upper2
+float rangeLower = rangeZone == "Fib 1" ? lower1 : lower2
+
+bool isBullish = close > rangeUpper
+bool isBearish = close < rangeLower
+bool isRanging = not isBullish and not isBearish
+
+barcolor(showCandles ? (isBullish ? BULL_COLOR : isBearish ? BEAR_COLOR : RANGE_COLOR) : na)
+
+// Band Labels (Right side)
+// Band Labels (Right side)
+if showLabels and barstate.islast
+    label.new(bar_index, upper6, "Level 6 (" + str.tostring(fib6, "#.###") + ")", color=#00000000, textcolor=BULL_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, upper5, "Level 5 (" + str.tostring(fib5, "#.###") + ")", color=#00000000, textcolor=BULL_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, upper4, "Level 4 (" + str.tostring(fib4, "#.###") + ")", color=#00000000, textcolor=BULL_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, upper3, "Level 3 (" + str.tostring(fib3, "#.###") + ")", color=#00000000, textcolor=BULL_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, upper2, "Level 2 (" + str.tostring(fib2, "#.###") + ")", color=#00000000, textcolor=BULL_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, upper1, "Level 1 (" + str.tostring(fib1, "#.###") + ")", color=#00000000, textcolor=RANGE_COLOR, style=label.style_label_left, size=size.small)
+
+    label.new(bar_index, lower1, "Level 1 (" + str.tostring(fib1, "#.###") + ")", color=#00000000, textcolor=RANGE_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, lower2, "Level 2 (" + str.tostring(fib2, "#.###") + ")", color=#00000000, textcolor=BEAR_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, lower3, "Level 3 (" + str.tostring(fib3, "#.###") + ")", color=#00000000, textcolor=BEAR_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, lower4, "Level 4 (" + str.tostring(fib4, "#.###") + ")", color=#00000000, textcolor=BEAR_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, lower5, "Level 5 (" + str.tostring(fib5, "#.###") + ")", color=#00000000, textcolor=BEAR_COLOR, style=label.style_label_left, size=size.small)
+    label.new(bar_index, lower6, "Level 6 (" + str.tostring(fib6, "#.###") + ")", color=#00000000, textcolor=BEAR_COLOR, style=label.style_label_left, size=size.small)
+
+// --- Information Table ---
+tPos = switch tablePos
+    "Top Right"    => position.top_right
+    "Bottom Right" => position.bottom_right
+    "Top Left"     => position.top_left
+    "Bottom Left"  => position.bottom_left
+    => position.top_right
+
+tSize = switch tableSize
+    "tiny"   => size.tiny
+    "small"  => size.small
+    "normal" => size.normal
+    => size.small
+
+var table statsTable = table.new(tPos, 2, 7, bgcolor=color.new(chart.bg_color, tableTransp), border_width=1, border_color=RANGE_COLOR)
+if barstate.islast
+    string statusText = isBullish ? "BULLISH" : isBearish ? "BEARISH" : "RANGING"
+    color statusCol   = isBullish ? BULL_COLOR : isBearish ? BEAR_COLOR : RANGE_COLOR
+
+    table.cell(statsTable, 0, 0, "VWAP", text_color=chart.fg_color, text_halign=text.align_left, text_size=tSize)
+    table.cell(statsTable, 1, 0, str.tostring(midasVwap, format.mintick), text_color=chart.fg_color, text_size=tSize)
+
+    table.cell(statsTable, 0, 1, "Distance", text_color=chart.fg_color, text_halign=text.align_left, text_size=tSize)
+    table.cell(statsTable, 1, 1, str.tostring(distPct, "#.##") + "%", text_color=distPct > 0 ? BULL_COLOR : BEAR_COLOR, text_size=tSize)
+
+    table.cell(statsTable, 0, 2, "Z-Score", text_color=chart.fg_color, text_halign=text.align_left, text_size=tSize)
+    table.cell(statsTable, 1, 2, str.tostring(zScore, "#.##"), text_color=math.abs(zScore) > 2 ? BEAR_COLOR : BULL_COLOR, text_size=tSize)
+
+    table.cell(statsTable, 0, 3, "Reversion Prob", text_color=chart.fg_color, text_halign=text.align_left, text_size=tSize)
+    table.cell(statsTable, 1, 3, str.tostring(reversionPr, "#.#") + "%", text_color=reversionPr > 90 ? BEAR_COLOR : BULL_COLOR, text_size=tSize)
+
+    table.cell(statsTable, 0, 4, "Fib 50%", text_color=chart.fg_color, text_halign=text.align_left, text_size=tSize)
+    table.cell(statsTable, 1, 4, str.tostring(midasVwap + (baseDev * 0.5), format.mintick), text_color=chart.fg_color, text_size=tSize)
+
+    table.cell(statsTable, 0, 5, "Status", text_color=chart.fg_color, text_halign=text.align_left, text_size=tSize)
+    table.cell(statsTable, 1, 5, statusText, text_color=statusCol, text_size=tSize)
+
+
+alertcondition(isReset, "VWAP Reset", "VWAP Anchor Reset")
+alertcondition(close > upper6 or close < lower6, "Extreme Reversal Zone", "Price hit the 1.618 Fibonacci Band")
