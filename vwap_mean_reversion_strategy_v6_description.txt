@@ -1,0 +1,100 @@
+### 🔷 Overview
+
+VWAP Mean Reversion Strategy v6 is a systematic intraday trading model designed specifically for **range-bound forex markets**, where price oscillates around a fair value rather than trending.
+
+The strategy leverages a **custom rolling VWAP (volume-weighted mean)** combined with deviation bands to identify statistically stretched price conditions and execute mean-reversion trades.
+
+---
+
+### ⚙️ Core Logic
+
+This strategy operates on three key principles:
+
+**1. VWAP-Based Mean Reversion**
+
+* Uses a rolling VWAP (not session VWAP) as dynamic equilibrium
+* Constructs deviation bands using volume-weighted absolute deviation
+* Trades occur when price deviates significantly from fair value
+
+**2. RSI Confirmation Filter**
+
+* Long trades: RSI below oversold threshold
+* Short trades: RSI above overbought threshold
+* Helps avoid premature entries
+
+**3. Volume Exhaustion Filter**
+
+* Avoids trades during abnormal volume spikes
+* Filters out potential breakout conditions (non-mean-reverting environments)
+
+---
+
+### 📊 Entry Conditions
+
+**🔽 Long Setup**
+
+* Price crosses below Lower Band (2σ deviation)
+* RSI confirms oversold condition
+* No extreme volume spike
+
+**🔼 Short Setup**
+
+* Price crosses above Upper Band (2σ deviation)
+* RSI confirms overbought condition
+* No extreme volume spike
+
+---
+
+### 🎯 Exit Logic
+
+* **Take Profit:** Return to VWAP (mean reversion target)
+* **Stop Loss:** Fixed % risk from entry price
+* Designed for **high-probability, small-edge trades**
+
+---
+
+### 💱 Best Use Case (Forex Focus)
+
+This strategy performs best in:
+
+* **Range-bound currency pairs** (e.g., EUR/USD, GBP/USD, USD/JPY)
+* **Low to moderate volatility sessions**
+* **Non-trending market phases**
+
+Avoid during:
+
+* High-impact news events
+* Strong directional trends
+* Breakout environments
+
+---
+
+### ⚠️ Strategy Profile
+
+* Type: Mean Reversion
+* Market Condition: Sideways / Consolidation
+* Frequency: Moderate to High
+* Risk: Tight stops, frequent trades
+
+---
+
+### 🧠 Notes
+
+* VWAP length controls sensitivity (shorter = faster signals)
+* RSI thresholds can be tightened for higher precision
+* Volume filter is critical to avoid false reversals
+
+---
+
+### 📌 Disclaimer
+
+This strategy is for educational and research purposes only.
+Not financial advice. Always validate with forward testing and proper risk management.
+
+---
+
+### 🔖 Credits
+
+Concept based on VWAP mean reversion principles and statistical deviation modeling.
+
+Customized into a systematic trading framework for forex markets.
